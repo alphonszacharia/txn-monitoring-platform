@@ -1,0 +1,15 @@
+  # Local development profile. Values mirror the project's .env file.
+# dbt does not read .env, so set POSTGRES_* variables in your shell
+# or edit the defaults below to match your .env (especially the port).
+txn_monitoring:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: "{{ env_var('POSTGRES_HOST', '127.0.0.1') }}"
+      port: "{{ env_var('POSTGRES_PORT', '5440') | as_number }}"
+      user: "{{ env_var('POSTGRES_USER', 'warehouse') }}"
+      password: "{{ env_var('POSTGRES_PASSWORD', 'warehouse') }}"
+      dbname: "{{ env_var('POSTGRES_DB', 'txn_monitoring') }}"
+      schema: public
+      threads: 4

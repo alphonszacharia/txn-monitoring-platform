@@ -47,7 +47,7 @@ docker exec -it txn_postgres psql -U warehouse -d txn_monitoring \
 ## Roadmap
 
 - [x] Data generator and raw load
-- [ ] dbt staging models and tests
+- [x] dbt staging models and tests
 - [ ] Star schema and alert rules
 - [ ] Dagster orchestration
 - [ ] Data quality checks and CI

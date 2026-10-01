@@ -1,0 +1,63 @@
+version: 2
+
+models:
+  - name: stg_customers
+    description: One row per customer, typed and standardised.
+    columns:
+      - name: customer_id
+        data_tests: [unique, not_null]
+      - name: country_code
+        data_tests: [not_null]
+      - name: kyc_risk_rating
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['low', 'medium', 'high']
+      - name: onboarded_date
+        data_tests: [not_null]
+
+  - name: stg_accounts
+    description: One row per account.
+    columns:
+      - name: account_id
+        data_tests: [unique, not_null]
+      - name: customer_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_customers')
+                field: customer_id
+      - name: account_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['current', 'savings', 'business']
+
+  - name: stg_transactions
+    description: One row per transaction, deduplicated on txn_id.
+    columns:
+      - name: txn_id
+        data_tests: [unique, not_null]
+      - name: account_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_accounts')
+                field: account_id
+      - name: txn_ts
+        data_tests: [not_null]
+      - name: amount
+        data_tests: [not_null]
+      - name: currency
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['EUR']
+      - name: txn_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['card_payment', 'transfer_out', 'transfer_in',
+                         'cash_deposit', 'cash_withdrawal', 'direct_debit']
