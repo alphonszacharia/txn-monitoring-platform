@@ -35,3 +35,12 @@ CREATE TABLE IF NOT EXISTS raw.transactions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_raw_txn_batch ON raw.transactions (_batch_id);
+
+CREATE TABLE IF NOT EXISTS raw.ground_truth (
+    txn_id      TEXT,
+    account_id  TEXT,
+    txn_date    TEXT,
+    pattern     TEXT,
+    _batch_id   TEXT NOT NULL,
+    _loaded_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);

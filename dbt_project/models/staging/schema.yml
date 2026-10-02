@@ -61,3 +61,14 @@ models:
               arguments:
                 values: ['card_payment', 'transfer_out', 'transfer_in',
                          'cash_deposit', 'cash_withdrawal', 'direct_debit']
+
+  - name: stg_ground_truth
+    description: Planted patterns from the generator, used to evaluate alert rules.
+    columns:
+      - name: txn_id
+        data_tests: [unique, not_null]
+      - name: pattern
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['structuring', 'rapid_in_out']

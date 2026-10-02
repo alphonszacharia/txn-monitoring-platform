@@ -6,8 +6,25 @@ profile: txn_monitoring
 model-paths: ["models"]
 macro-paths: ["macros"]
 test-paths: ["tests"]
+seed-paths: ["seeds"]
 target-path: "target"
 clean-targets: ["target", "dbt_packages"]
+
+# Alert rule parameters. Override at runtime, e.g.
+#   dbt run --vars '{structuring_min_deposits: 2}'
+vars:
+  reporting_threshold: 10000       # illustrative cash reporting threshold (EUR)
+  structuring_lower_pct: 0.90      # deposits >= 90% of threshold, but below it
+  structuring_min_deposits: 3      # same-day deposits needed to alert
+  rapid_min_amount: 10000          # minimum inbound transfer to consider
+  rapid_out_ratio: 0.80            # outbound must be >= 80% of inbound
+  rapid_window_hours: 24           # outbound must follow within this window
+  min_precision: 0.80              # evaluation gates (tests fail below these)
+  min_recall: 0.90
+
+seeds:
+  txn_monitoring:
+    +schema: staging
 
 models:
   txn_monitoring:

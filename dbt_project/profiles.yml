@@ -1,4 +1,4 @@
-  # Local development profile. Values mirror the project's .env file.
+# Local development profile. Values mirror the project's .env file.
 # dbt does not read .env, so set POSTGRES_* variables in your shell
 # or edit the defaults below to match your .env (especially the port).
 txn_monitoring:

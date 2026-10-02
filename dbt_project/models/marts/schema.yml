@@ -1,0 +1,84 @@
+version: 2
+
+models:
+  - name: dim_customer
+    columns:
+      - name: customer_id
+        data_tests: [unique, not_null]
+
+  - name: dim_account
+    columns:
+      - name: account_id
+        data_tests: [unique, not_null]
+      - name: customer_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_customer')
+                field: customer_id
+
+  - name: dim_date
+    columns:
+      - name: date_key
+        data_tests: [unique, not_null]
+      - name: full_date
+        data_tests: [unique, not_null]
+
+  - name: fct_transactions
+    description: One row per transaction, keyed to the dimensions.
+    columns:
+      - name: txn_id
+        data_tests: [unique, not_null]
+      - name: account_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_account')
+                field: account_id
+      - name: customer_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_customer')
+                field: customer_id
+      - name: date_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: counterparty_risk_level
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['standard', 'elevated', 'high']
+
+  - name: fct_alerts
+    description: One row per alert rule, account and day.
+    columns:
+      - name: alert_id
+        data_tests: [unique, not_null]
+      - name: rule_name
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['structuring', 'rapid_in_out', 'high_risk_country']
+      - name: account_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_account')
+                field: account_id
+      - name: total_amount
+        data_tests: [not_null]
+
+  - name: eval_alert_performance
+    description: Precision and recall of each rule against the planted patterns.
+    columns:
+      - name: rule_name
+        data_tests: [unique, not_null]

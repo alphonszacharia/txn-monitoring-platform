@@ -17,7 +17,9 @@ from faker import Faker
 
 from data_generator.patterns import PATTERNS
 
-DATA_DIR = Path("data/raw")
+ROOT = Path(__file__).resolve().parents[1]
+DATA_DIR = ROOT / "data" / "raw"
+GROUND_TRUTH_DIR = ROOT / "data" / "ground_truth"
 COUNTRIES = ["IE", "GB", "DE", "FR", "ES", "NL", "IT", "US", "IN", "PL"]
 ACCOUNT_TYPES = ["current", "savings", "business"]
 NORMAL_TXN_TYPES = ["card_payment", "transfer_out", "transfer_in",
@@ -94,6 +96,17 @@ def generate_day(day, accounts, seed, txns_per_account=2.0, pattern_rate=0.01):
     return pd.DataFrame(rows), pd.DataFrame(truth)
 
 
+def write_day(day, accounts, seed):
+    """Generate one day and write the transactions and ground-truth files."""
+    out_dir = DATA_DIR / "transactions"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    GROUND_TRUTH_DIR.mkdir(parents=True, exist_ok=True)
+    txns, truth = generate_day(day, accounts, seed)
+    txns.to_csv(out_dir / f"transactions_{day.isoformat()}.csv", index=False)
+    truth.to_csv(GROUND_TRUTH_DIR / f"ground_truth_{day.isoformat()}.csv", index=False)
+    return len(txns), len(truth)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--date", required=True, help="YYYY-MM-DD (first day)")
@@ -104,17 +117,10 @@ def main():
 
     _, accounts = build_reference(args.customers, args.seed)
     start = date.fromisoformat(args.date)
-    out_dir = DATA_DIR / "transactions"
-    truth_dir = Path("data/ground_truth")
-    out_dir.mkdir(parents=True, exist_ok=True)
-    truth_dir.mkdir(parents=True, exist_ok=True)
-
     for offset in range(args.days):
         day = start + timedelta(days=offset)
-        txns, truth = generate_day(day, accounts, args.seed)
-        txns.to_csv(out_dir / f"transactions_{day.isoformat()}.csv", index=False)
-        truth.to_csv(truth_dir / f"ground_truth_{day.isoformat()}.csv", index=False)
-        print(f"{day}: {len(txns)} transactions ({len(truth)} planted)")
+        n_txns, n_planted = write_day(day, accounts, args.seed)
+        print(f"{day}: {n_txns} transactions ({n_planted} planted)")
 
 
 if __name__ == "__main__":

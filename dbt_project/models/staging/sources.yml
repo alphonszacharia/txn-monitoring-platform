@@ -12,3 +12,5 @@ sources:
       - name: customers
       - name: accounts
       - name: transactions
+      - name: ground_truth
+        description: Planted-pattern answers from the generator, used only for evaluating alert rules.
