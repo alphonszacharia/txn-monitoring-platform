@@ -15,7 +15,11 @@ from pathlib import Path
 import pandas as pd
 from faker import Faker
 
-from data_generator.patterns import PATTERNS
+from data_generator.patterns import (
+    PATTERNS,
+    cash_business_takings,
+    own_account_pass_through,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = ROOT / "data" / "raw"
@@ -60,7 +64,20 @@ def build_reference(n_customers, seed):
     return cust_df, acct_df
 
 
-def generate_day(day, accounts, seed, txns_per_account=2.0, pattern_rate=0.01):
+def cash_intensive_accounts(accounts, seed, n_regular=12, n_occasional=5):
+    """Business accounts that legitimately bank cash takings.
+
+    Regular ones lodge most days; occasional ones only now and then, so they
+    cannot be told apart from structuring by looking at how often they alert.
+    """
+    business = accounts.loc[accounts["account_type"] == "business", "account_id"].tolist()
+    chosen = random.Random(f"{seed}-cashbiz").sample(
+        business, min(n_regular + n_occasional, len(business)))
+    return chosen[:n_regular], chosen[n_regular:]
+
+
+def generate_day(day, accounts, seed, txns_per_account=2.0, pattern_rate=0.01,
+                 decoys=True):
     # Deterministic per day, so re-running a date gives the same file.
     rng = random.Random(f"{seed}-{day.isoformat()}")
     counter = {"n": 0}
@@ -82,7 +99,8 @@ def generate_day(day, accounts, seed, txns_per_account=2.0, pattern_rate=0.01):
                 "amount": round(min(rng.lognormvariate(4.5, 1.0), 5_000), 2),
                 "currency": "EUR",
                 "txn_type": rng.choice(NORMAL_TXN_TYPES),
-                "counterparty_country": rng.choices(COUNTRIES, weights=[70, 8, 4, 4, 3, 3, 3, 2, 2, 1])[0],
+                "counterparty_country": rng.choices(
+                    COUNTRIES, weights=[70, 8, 4, 4, 3, 3, 3, 2, 2, 1])[0],
             })
 
     n_planted = max(1, int(len(account_ids) * pattern_rate))
@@ -92,6 +110,20 @@ def generate_day(day, accounts, seed, txns_per_account=2.0, pattern_rate=0.01):
         rows.extend(txns)
         truth.extend({"txn_id": t["txn_id"], "account_id": acct,
                       "txn_date": day.isoformat(), "pattern": label} for t in txns)
+
+    if decoys:
+        # Decoys use their own RNG, so adding them never changes the rows above.
+        decoy_rng = random.Random(f"{seed}-{day.isoformat()}-decoys")
+        planted = {t["account_id"] for t in truth}
+        regular, occasional = cash_intensive_accounts(accounts, seed)
+        for group, prob in ((regular, 0.60), (occasional, 0.12)):
+            for acct in group:
+                if acct not in planted and decoy_rng.random() < prob:
+                    rows.extend(cash_business_takings(acct, day, decoy_rng, next_id))
+        taken = set(regular) | set(occasional)
+        pool = [a for a in account_ids if a not in planted and a not in taken]
+        for acct in decoy_rng.sample(pool, 3):
+            rows.extend(own_account_pass_through(acct, day, decoy_rng, next_id))
 
     return pd.DataFrame(rows), pd.DataFrame(truth)
 

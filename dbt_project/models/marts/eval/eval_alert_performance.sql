@@ -52,5 +52,8 @@ select
     round(true_positives::numeric
           / nullif(true_positives + false_positives, 0), 3) as precision,
     round(true_positives::numeric
-          / nullif(true_positives + false_negatives, 0), 3) as recall
+          / nullif(true_positives + false_negatives, 0), 3) as recall,
+    -- Days of transactions loaded; the quality gate only applies once there are
+    -- enough (kept here so the test depends on this one model only).
+    (select count(distinct txn_date) from {{ ref('fct_transactions') }}) as days_loaded
 from counts

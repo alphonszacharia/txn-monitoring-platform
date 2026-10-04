@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: warehouse
+          POSTGRES_PASSWORD: warehouse
+          POSTGRES_DB: txn_monitoring
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U warehouse -d txn_monitoring"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: warehouse
+      POSTGRES_PASSWORD: warehouse
+      POSTGRES_DB: txn_monitoring
+      PGPASSWORD: warehouse
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt -r requirements-dashboard.txt
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Unit tests (generator)
+        run: python -m pytest -q
+
+      - name: Create schemas and raw tables
+        run: psql -h localhost -U warehouse -d txn_monitoring -f sql/init.sql
+
+      - name: Generate 7 days of synthetic data
+        run: python -m data_generator.generate --date 2026-10-01 --days 7
+
+      - name: Load into Postgres
+        run: |
+          python -m ingestion.load_raw --reference
+          for d in 2026-10-01 2026-10-02 2026-10-03 2026-10-04 2026-10-05 2026-10-06 2026-10-07; do
+            python -m ingestion.load_raw --date "$d"
+          done
+          python -m ingestion.load_raw --ground-truth
+
+      - name: dbt build (seed, models, tests, alert-quality gate)
+        working-directory: dbt_project
+        run: dbt build --profiles-dir .
+
+      - name: dbt source freshness
+        working-directory: dbt_project
+        run: dbt source freshness --profiles-dir .
+
+      - name: Dashboard smoke test
+        run: python -m pytest tests/test_dashboard_smoke.py -q
+        env:
+          RUN_DASHBOARD_SMOKE: "1"
+
+      - name: Validate Dagster definitions
+        run: dagster definitions validate -m orchestration.definitions
+        env:
+          DAGSTER_HOME: ${{ runner.temp }}/dagster_home

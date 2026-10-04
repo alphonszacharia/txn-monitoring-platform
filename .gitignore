@@ -9,3 +9,5 @@ dbt_project/.user.yml
 .dagster_home/
 .dagster/
 tmp*/
+.pytest_cache/
+.ruff_cache/

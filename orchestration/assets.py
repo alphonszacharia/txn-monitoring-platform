@@ -9,6 +9,7 @@ Asset graph:
 The ingestion assets reuse the same functions as the command-line tools in
 data_generator/ and ingestion/, so the CLI and Dagster behave identically.
 """
+import hashlib
 from datetime import date
 
 import dagster as dg
@@ -25,7 +26,7 @@ SEED = 42
 N_CUSTOMERS = 500
 
 # end_offset=1 makes today's partition available as well as past days.
-daily_partitions = dg.DailyPartitionsDefinition(start_date="2026-10-01", end_offset=1)
+daily_partitions = dg.DailyPartitionsDefinition(start_date="2026-10-01", end_offset=7)
 
 
 def _load(table, columns, path, batch_id, ddl=None):
@@ -101,13 +102,40 @@ dbt_project = DbtProject(
     profiles_dir=lr.ROOT / "dbt_project",
 )
 
-# Build dbt's manifest.json once, only if it is missing. We deliberately do NOT
-# use prepare_if_dev(): it re-runs `dbt parse` in every process that imports this
-# module, and on Windows several step subprocesses parsing at once collide on
-# dbt's target/ and logs/ files and crash. If you change dbt models, refresh
-# the manifest with:  cd dbt_project && dbt parse --profiles-dir .
-if not dbt_project.manifest_path.exists():
+def _dbt_source_hash():
+    """Fingerprint of every dbt source file (content, not timestamps)."""
+    root = dbt_project.project_dir
+    digest = hashlib.sha256()
+    files = [root / "dbt_project.yml"]
+    for sub in ("models", "tests", "macros", "seeds", "analyses"):
+        files += sorted(p for p in (root / sub).rglob("*") if p.is_file())
+    for path in files:
+        if path.exists():
+            digest.update(str(path.relative_to(root)).replace("\\", "/").encode())
+            digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
+def _ensure_fresh_manifest():
+    """Run `dbt parse` only when the manifest is missing or the dbt files changed.
+
+    Not prepare_if_dev(): that re-parses in every process that imports this module,
+    and on Windows several processes parsing at once collide on dbt's target/ files.
+    Comparing content hashes (not file times) also works after unzipping new files,
+    whose timestamps can be older than the existing manifest. A stale manifest makes
+    the UI and the run process disagree about which assets and checks exist.
+    """
+    marker = dbt_project.manifest_path.parent / "source_hash.txt"
+    current = _dbt_source_hash()
+    if (dbt_project.manifest_path.exists() and marker.exists()
+            and marker.read_text().strip() == current):
+        return
     dbt_project.preparer.prepare(dbt_project)
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(current)
+
+
+_ensure_fresh_manifest()
 
 # dbt sources (raw.*) are mapped onto the ingestion assets above,
 # so the lineage graph connects Python ingestion to dbt models.

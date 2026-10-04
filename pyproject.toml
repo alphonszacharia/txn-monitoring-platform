@@ -1,0 +1,10 @@
+[tool.ruff]
+line-length = 100
+extend-exclude = ["dbt_project/target", "dbt_project/dbt_packages"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

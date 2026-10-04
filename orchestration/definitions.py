@@ -3,7 +3,6 @@
 Run from the project root:
     dagster dev -m orchestration.definitions
 """
-from datetime import date
 
 import dagster as dg
 from dagster_dbt import DbtCliResource

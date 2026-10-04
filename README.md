@@ -3,8 +3,8 @@
 A local, end-to-end data engineering project: synthetic banking transactions
 are ingested, modelled and tested, then flagged by AML-style monitoring rules.
 
-> Status: stages 1-4 done (generator, raw load, dbt staging, star schema,
-> alert rules with evaluation, Dagster orchestration). CI and dashboard next.
+> Status: stages 1-5 done (generator with decoys, raw load, dbt staging, star
+> schema, tuned alert rules with evaluation, Dagster, CI, Streamlit dashboard).
 
 ## Architecture (target)
 
@@ -61,12 +61,56 @@ dbt test --profiles-dir .
 
 `eval_alert_performance` scores the first two against the planted patterns
 (precision and recall per rule), and a dbt test fails if either drops below
-the gates in `dbt_project.yml`.
+the gates in `dbt_project.yml`. The gate only applies once at least 7 days are
+loaded (`gate_min_days`), because the recurring-account refinement needs
+several days of history to work.
 
-> Note: the synthetic background traffic contains no look-alike activity, so
-> the rules currently score perfectly. Adding decoys (legitimate near-threshold
-> deposits, genuine large transfers) is the planned way to make the evaluation
-> meaningful.
+### Decoys and tuning
+
+The generator also plants **decoys**: legitimate activity that looks like the
+suspicious patterns but is *not* in the ground truth, so alerting on it counts
+as a false positive.
+
+- Cash-intensive businesses lodging several just-under-threshold deposits
+  (12 do so most days, 5 only occasionally).
+- Large inbound transfers forwarded within hours, usually to a domestic
+  account, occasionally to CY/AE.
+
+Measured on 7 days of data (seed 42, 21 structuring and 28 rapid in/out
+planted cases; recall is 1.0 in both runs):
+
+| Rule | Baseline precision | Tuned precision | Refinement |
+|---|---|---|---|
+| `structuring` | 0.273 (56 false positives) | 0.808 (5) | Ignore accounts that trigger on 3+ different days |
+| `rapid_in_out` | 0.571 (21 false positives) | 0.933 (2) | Outbound leg must go to an elevated/high-risk country |
+
+Reproduce the baseline with
+`dbt build --vars '{structuring_recurring_days: 0, rapid_require_risky_outbound: false, min_precision: 0, min_recall: 0}'`.
+
+Caveats: the decoys and the refinements were designed together on synthetic
+data, so the tuned figures show the tuning workflow works, not how the rules
+would perform on real bank data. The recurring-days refinement also depends on
+how much history is loaded.
+
+## Dashboard
+
+```bash
+pip install -r requirements-dashboard.txt
+streamlit run dashboard/app.py          # opens http://localhost:8501
+```
+
+Reads only from the marts and staging layers. Three tabs: **Alerts** (daily
+trend by rule, filterable table with each alert's outcome against the synthetic
+ground truth), **Rule performance** (precision and recall per rule), and
+**Investigate** (pick an alert and see the account's transactions around it).
+Sidebar filters cover rule, date, customer KYC risk and a false-positives-only view.
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push and pull request against a
+Postgres service container: ruff lint, generator unit tests (pytest), then
+generate, load, `dbt build` (50 data tests plus the precision/recall gate),
+source freshness and Dagster definition validation.
 
 ## Orchestration (Dagster)
 
@@ -96,9 +140,10 @@ are mapped to Dagster assets so lineage is one connected graph.
 ## Design decisions
 
 - **Synthetic data only:** no real customer data, so the repo is safe to publish.
-- **Planted patterns + ground truth:** structuring and rapid in/out flows are
-  inserted on purpose, with answers saved separately, so alert rules can be
-  measured for precision and recall.
+- **Planted patterns, decoys and ground truth:** suspicious flows and
+  look-alike legitimate ones are inserted on purpose, with only the suspicious
+  ones recorded as answers, so alert rules can be scored for precision and
+  recall.
 - **Idempotent loads:** every row carries `_batch_id` and `_loaded_at`;
   re-running a batch replaces it rather than duplicating it.
 - **Raw as text:** the bronze layer stores values as received; typing and
@@ -110,5 +155,6 @@ are mapped to Dagster assets so lineage is one connected graph.
 - [x] dbt staging models and tests
 - [x] Star schema and alert rules
 - [x] Dagster orchestration
-- [ ] Data quality checks and CI
-- [ ] Dashboard and write-up
+- [x] Data quality checks and CI
+- [x] Dashboard
+- [ ] Write-up (architecture diagram and design notes in `docs/`)
