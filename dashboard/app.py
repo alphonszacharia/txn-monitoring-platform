@@ -3,7 +3,9 @@
 Run from the project root:
     streamlit run dashboard/app.py
 """
+import os
 import sys
+import time
 from pathlib import Path
 
 # `streamlit run dashboard/app.py` puts only dashboard/ on the path, so add the
@@ -39,10 +41,14 @@ try:
     alerts = load("ALERTS")
     evaluation = load("EVALUATION")
     daily = load("DAILY_VOLUME")
-except Exception as exc:  # database down, wrong port, models not built yet
-    st.error("Could not read the warehouse. Is Postgres running and `dbt build` done?")
-    st.code(str(exc))
-    st.stop()
+except Exception as exc:  # database down, or the pipeline has not finished yet
+    # On a first `docker compose up` the data is still being loaded, so wait and retry.
+    st.info("The warehouse is not ready yet. If this is a first start, the pipeline "
+            "is still loading data (a few minutes). This page retries automatically.")
+    with st.expander("Technical detail"):
+        st.code(str(exc))
+    time.sleep(float(os.getenv("DASHBOARD_RETRY_SECONDS", "10")))
+    st.rerun()
 
 if alerts.empty:
     st.warning("The alerts table is empty. Run the pipeline first.")

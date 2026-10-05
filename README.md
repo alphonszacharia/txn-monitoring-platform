@@ -112,6 +112,71 @@ Postgres service container: ruff lint, generator unit tests (pytest), then
 generate, load, `dbt build` (50 data tests plus the precision/recall gate),
 source freshness and Dagster definition validation.
 
+## Run everything in Docker
+
+One command starts Postgres, Dagster and the dashboard, and loads all the data.
+The only thing needed on your machine is Docker Desktop.
+
+```bat
+docker compose up -d
+```
+
+The first run builds the image (a few minutes) and then runs the whole pipeline
+through Dagster inside the container: reference data, one run per day for 7 days,
+then the dbt build and tests (about 2 more minutes). The command returns once the
+dashboard container has started, which happens after the data is ready. Then open:
+
+| What | Where |
+|---|---|
+| Dagster UI | http://localhost:3000 |
+| Dashboard | http://localhost:8501 |
+| Postgres from your machine (psql, a SQL client) | `localhost:5440` (the `POSTGRES_PORT` in `.env`) |
+
+The Dagster UI is available from the start, so you can watch the runs while the
+data loads. Later `docker compose up -d` calls skip the pipeline, because the
+warehouse is already built.
+
+```bat
+docker compose ps                                             :: all three should be running
+docker compose logs -f dagster                                :: follow the pipeline run
+docker compose exec dagster ls /app/data/raw/transactions     :: look at the generated CSVs
+docker compose down                                           :: stop, keep all data
+docker compose down -v                                        :: stop and wipe everything
+```
+
+`down -v` removes the database, Dagster's run history and the generated files, so
+the next `up -d` is a completely clean start. If the pipeline fails, the dashboard
+still starts and shows an error; open the Dagster UI for the failed run's logs.
+To re-run it by hand:
+`docker compose exec dagster python -m orchestration.run_pipeline`.
+
+Inside the containers Postgres is reached as `postgres:5432`; compose sets this,
+so `.env` is not copied into the image. Stop any `dagster dev` or `streamlit`
+running on your machine first, or ports 3000 and 8501 will clash.
+
+## Run through Dagster on your machine (without Docker app containers)
+
+```bat
+docker compose down -v && docker compose up -d      :: wipe and recreate Postgres
+rmdir /s /q data .dagster_home dbt_project\target    :: clear local state
+mkdir .dagster_home
+set DAGSTER_HOME=%CD%\.dagster_home
+dagster dev -m orchestration.definitions
+```
+
+In the UI at http://localhost:3000, in this order:
+
+1. **Assets**: select `raw_customers` and `raw_accounts`, click **Materialize**.
+2. Select `daily_batch_files`, `raw_transactions` and `raw_ground_truth`, click
+   **Materialize**, choose the partition range 2026-10-01 to 2026-10-07 and launch
+   the backfill. Wait until all 7 runs succeed.
+3. Select the dbt assets (group `default`) and **Materialize** once. This builds the
+   models and runs the tests, including the precision/recall gate.
+
+The data window is fixed at 7 days (2026-10-01 to 2026-10-07), so every partition
+exists regardless of today's date. Expected result: 7 batches in `raw.transactions`,
+64 dbt passes, structuring precision about 0.81 and rapid in/out about 0.93.
+
 ## Orchestration (Dagster)
 
 ```bash
@@ -126,7 +191,7 @@ dbt models (seeds, staging, marts and all tests via `dbt build`);
 
 | Component | Purpose |
 |---|---|
-| Daily partitions | One partition per day, starting 2026-10-01; re-running a day replaces it |
+| Daily partitions | One partition per day, a fixed window of 7 days from 2026-10-01; re-running a day replaces it |
 | `daily_pipeline` job + schedule | Generate, load and transform one day (06:00 Europe/Dublin, off by default) |
 | `ingest_and_transform` job + sensor | If a batch file appears on disk but is not loaded, load it and rebuild the warehouse |
 

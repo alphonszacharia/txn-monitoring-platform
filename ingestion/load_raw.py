@@ -42,7 +42,8 @@ CREATE TABLE IF NOT EXISTS raw.ground_truth (
 
 
 def connect():
-    load_dotenv(ROOT / ".env", override=True)
+    if not os.getenv("RUNNING_IN_DOCKER"):  # in a container, compose sets the env
+        load_dotenv(ROOT / ".env", override=True)
     return psycopg2.connect(
         host=os.getenv("POSTGRES_HOST", "localhost"),
         port=os.getenv("POSTGRES_PORT", "5432"),

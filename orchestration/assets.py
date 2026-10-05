@@ -10,6 +10,7 @@ The ingestion assets reuse the same functions as the command-line tools in
 data_generator/ and ingestion/, so the CLI and Dagster behave identically.
 """
 import hashlib
+import os
 from datetime import date
 
 import dagster as dg
@@ -20,13 +21,19 @@ from data_generator.generate import build_reference, write_day
 from ingestion import load_raw as lr
 
 # Make .env values visible to dbt subprocesses too (profiles.yml reads env vars).
-load_dotenv(lr.ROOT / ".env", override=True)
+if not os.getenv("RUNNING_IN_DOCKER"):  # in a container, compose sets the env
+    load_dotenv(lr.ROOT / ".env", override=True)
 
 SEED = 42
 N_CUSTOMERS = 500
 
-# end_offset=1 makes today's partition available as well as past days.
-daily_partitions = dg.DailyPartitionsDefinition(start_date="2026-10-01", end_offset=7)
+# The synthetic data set is a fixed window of 7 days (2026-10-01 to 2026-10-07).
+# end_date is exclusive. A fixed window means every day can be materialized at
+# once, regardless of today's date, and the dbt quality gate (7 days) can be met.
+# end_offset lets days that have not "happened" yet exist; end_date caps the window.
+daily_partitions = dg.DailyPartitionsDefinition(
+    start_date="2026-10-01", end_date="2026-10-08", end_offset=7
+)
 
 
 def _load(table, columns, path, batch_id, ddl=None):

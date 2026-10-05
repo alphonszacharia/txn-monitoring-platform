@@ -7,7 +7,8 @@ import psycopg2
 from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parents[1]
-load_dotenv(ROOT / ".env", override=True)
+if not os.getenv("RUNNING_IN_DOCKER"):  # in a container, compose sets the env
+    load_dotenv(ROOT / ".env", override=True)
 
 
 def run(sql, params=None):

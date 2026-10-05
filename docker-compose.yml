@@ -1,3 +1,28 @@
+# Whole platform in containers:
+#   postgres   the warehouse
+#   dagster    orchestration UI and daemon (http://localhost:3000)
+#   dashboard  Streamlit dashboard          (http://localhost:8501)
+#
+#   docker compose up -d
+#
+# On the first start the dagster container also runs the whole pipeline (about 3
+# minutes) and the dashboard starts once it has finished.
+# Follow it with:  docker compose logs -f dagster
+
+x-app: &app
+  build: .
+  image: txn-monitoring-platform:latest
+  environment: &app_env
+    # Containers reach Postgres by service name, on its internal port.
+    POSTGRES_HOST: postgres
+    POSTGRES_PORT: "5432"
+    POSTGRES_USER: ${POSTGRES_USER:-warehouse}
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-warehouse}
+    POSTGRES_DB: ${POSTGRES_DB:-txn_monitoring}
+  depends_on:
+    postgres:
+      condition: service_healthy
+
 services:
   postgres:
     image: postgres:16
@@ -7,6 +32,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-warehouse}
       POSTGRES_DB: ${POSTGRES_DB:-txn_monitoring}
     ports:
+      # Host port, for tools running outside Docker (psql, dbt on your machine).
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -17,5 +43,39 @@ services:
       timeout: 5s
       retries: 10
 
+  dagster:
+    <<: *app
+    container_name: txn_dagster
+    command: ["python", "-m", "orchestration.start"]
+    ports:
+      - "3000:3000"
+    volumes:
+      - dagster_home:/dagster_home
+      - data:/app/data
+    healthcheck:
+      # Healthy once the pipeline has finished (successfully or not), so the
+      # dashboard starts after the data is ready and never waits forever.
+      test: ["CMD-SHELL", "test -f /tmp/pipeline_status"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 20m
+
+  dashboard:
+    <<: *app
+    container_name: txn_dashboard
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dagster:
+        condition: service_healthy
+    command: ["streamlit", "run", "dashboard/app.py",
+              "--server.address", "0.0.0.0", "--server.port", "8501",
+              "--server.headless", "true"]
+    ports:
+      - "8501:8501"
+
 volumes:
   pgdata:
+  dagster_home:
+  data:

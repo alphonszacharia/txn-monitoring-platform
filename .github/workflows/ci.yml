@@ -79,3 +79,10 @@ jobs:
         run: dagster definitions validate -m orchestration.definitions
         env:
           DAGSTER_HOME: ${{ runner.temp }}/dagster_home
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the application image
+        run: docker compose build

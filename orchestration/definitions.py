@@ -40,8 +40,10 @@ ingest_and_transform = dg.define_asset_job(
     default_status=dg.DefaultScheduleStatus.STOPPED,
 )
 def daily_pipeline_schedule(context: dg.ScheduleEvaluationContext):
-    """Every morning at 06:00 process that day's partition."""
+    """Every morning at 06:00 process that day's partition, if it exists."""
     day = context.scheduled_execution_time.date().isoformat()
+    if not daily_partitions.has_partition_key(day):
+        return dg.SkipReason(f"No partition for {day}: the data window is fixed.")
     return dg.RunRequest(run_key=day, partition_key=day)
 
 
