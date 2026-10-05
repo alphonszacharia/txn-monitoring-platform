@@ -76,7 +76,9 @@ jobs:
           RUN_DASHBOARD_SMOKE: "1"
 
       - name: Validate Dagster definitions
-        run: dagster definitions validate -m orchestration.definitions
+        run: |
+          mkdir -p "$DAGSTER_HOME"
+          dagster definitions validate -m orchestration.definitions
         env:
           DAGSTER_HOME: ${{ runner.temp }}/dagster_home
 
